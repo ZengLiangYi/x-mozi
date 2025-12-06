@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { useAvatarStore } from "@/store/avatarStore";
 import { AVATAR_LIST } from "@/types/avatar";
 import styles from "./style.module.css";

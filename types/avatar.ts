@@ -3,6 +3,7 @@ export type AvatarAction = 'idle' | 'talk' | 'dance';
 export interface AvatarModel {
   id: string;
   name: string;
+  thumbnail: string;
   videos: {
     idle: string;
     talk: string;
@@ -14,6 +15,7 @@ export const AVATAR_LIST: AvatarModel[] = [
   {
     id: '1',
     name: '形象 1',
+    thumbnail: '/avatars/avatar-1.png',
     videos: {
       idle: '/videos/avatar-1-idle.mp4',
       talk: '/videos/avatar-1-talk.mp4',
@@ -23,6 +25,7 @@ export const AVATAR_LIST: AvatarModel[] = [
   {
     id: '2',
     name: '形象 2',
+    thumbnail: '/avatars/avatar-2.png',
     videos: {
       idle: '/videos/avatar-2-idle.mp4',
       talk: '/videos/avatar-2-talk.mp4',
@@ -32,6 +35,7 @@ export const AVATAR_LIST: AvatarModel[] = [
   {
     id: '3',
     name: '形象 3',
+    thumbnail: '/avatars/avatar-3.png',
     videos: {
       idle: '/videos/avatar-3-idle.mp4',
       talk: '/videos/avatar-3-talk.mp4',
@@ -41,6 +45,7 @@ export const AVATAR_LIST: AvatarModel[] = [
   {
     id: '4',
     name: '形象 4',
+    thumbnail: '/avatars/avatar-4.png',
     videos: {
       idle: '/videos/avatar-4-idle.mp4',
       talk: '/videos/avatar-4-talk.mp4',
@@ -50,6 +55,7 @@ export const AVATAR_LIST: AvatarModel[] = [
   {
     id: '5',
     name: '形象 5',
+    thumbnail: '/avatars/avatar-5.png',
     videos: {
       idle: '/videos/avatar-5-idle.mp4',
       talk: '/videos/avatar-5-talk.mp4',

@@ -1,0 +1,52 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.visualizerContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.button {
+  height: 64px;
+  /* width and border-radius handled by framer-motion */
+  border: none;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  color: #333;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s;
+  outline: none;
+  overflow: hidden; /* Clip visualizer if it exceeds bounds during animation */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.button:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.button.active {
+  background: #f5222d;
+  color: white;
+  box-shadow: 0 8px 20px rgba(245, 34, 45, 0.3);
+}
+
+.button:disabled {
+  background: #f0f0f0;
+  color: #ccc;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
