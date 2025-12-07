@@ -41,7 +41,7 @@ export function AvatarVideo() {
         className={styles.video}
         autoPlay
         playsInline
-        muted // 添加 muted 避免自动播放策略问题
+        muted={action !== "dance"} // 跳舞时允许出声，其余保持静音以避免自动播放限制
         loop={isLoop}
         onEnded={handleEnded}
         onError={handleError}

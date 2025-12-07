@@ -1,4 +1,4 @@
-import request from '@/utils/request';
+import request, { RequestError } from '@/utils/request';
 
 /** 单次调用腾讯云 TTS 的最大安全字符数（经验值，官方有更低限制） */
 const MAX_TTS_CHARS = 300;
@@ -87,4 +87,74 @@ export async function textToSpeech(text: string): Promise<ArrayBuffer> {
   }
 
   return merged.buffer;
+}
+
+interface StreamEvents {
+  onAudio: (bytes: Uint8Array) => void | Promise<void>;
+  onStatus?: (status: unknown) => void;
+}
+
+/**
+ * 流式文字转语音（服务端 SSE 下发 base64 音频片段）
+ */
+export async function streamTextToSpeech(
+  text: string,
+  events: StreamEvents
+): Promise<void> {
+  const response = await fetch('/api/tts/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok || !response.body) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new RequestError(
+      errorData.error || `请求失败 (${response.status})`,
+      response.status,
+      errorData.details
+    );
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      if (!chunk.startsWith('data: ')) continue;
+      const dataStr = chunk.slice(6).trim();
+      if (dataStr === '[DONE]') {
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(dataStr) as
+          | { event: 'audio'; data: string }
+          | { event: 'status'; data: unknown }
+          | { event: 'ready' }
+          | { event: 'end' }
+          | { event: 'error'; message: string };
+
+        if (payload.event === 'audio') {
+          await events.onAudio(base64ToBytes(payload.data));
+        } else if (payload.event === 'status' && events.onStatus) {
+          events.onStatus(payload.data);
+        } else if (payload.event === 'error') {
+          throw new RequestError(payload.message, 500);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '流式解析错误';
+        throw new RequestError(message, 500);
+      }
+    }
+  }
 }

@@ -6,6 +6,7 @@ import { AudioOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useRealtimeASR } from '@/hooks/useRealtimeASR';
 import { AudioVisualizer } from './AudioVisualizer';
 import styles from './style.module.css';
+import { DEFAULT_SILENCE_TIMEOUT } from '@/constants/audio';
 
 interface VoiceButtonProps {
   /** 识别完成回调（VAD 静音后自动触发） */
@@ -28,7 +29,7 @@ export const VoiceButton = forwardRef<VoiceButtonRef, VoiceButtonProps>(
     const { isRecording, mediaStream, startRecording, stopRecording } = useRealtimeASR({
       onResult,
       onInterim,
-      silenceTimeout: 1500,
+      silenceTimeout: DEFAULT_SILENCE_TIMEOUT,
     });
 
     // 暴露方法给父组件（用于唤醒模式自动触发）

@@ -11,6 +11,7 @@ import { useAvatarStore } from "@/store/avatarStore";
 import { useChatStore } from "@/store/chatStore";
 import { AVATAR_LIST } from "@/types/avatar";
 import type { VoiceButtonRef } from "@/components/VoiceButton";
+import { DEFAULT_WAKE_WORDS } from "@/constants/audio";
 
 // Dynamic import VoiceButton
 const VoiceButton = dynamic(
@@ -48,7 +49,7 @@ export default function Home() {
 
   // 唤醒词监听
   const { isListening: isWakeListening, startListening, stopListening } = useWakeWord({
-    wakeWords: ['你好墨子', '墨子', '墨子你好'],
+    wakeWords: DEFAULT_WAKE_WORDS,
     onWakeUp: handleWakeUp,
   });
 
@@ -97,7 +98,7 @@ export default function Home() {
       {/* 顶部主体区域 */}
       <div className="flex flex-1 w-full overflow-hidden">
         {/* 左侧区域：智能体展示 (约66%) */}
-        <section className="flex flex-col flex-2 h-full border-r border-gray-200 bg-black relative p-4">
+        <section className="flex flex-col flex-2 h-full border-r border-gray-200 bg-black relative">
           {/* 视频播放容器 - 自适应剩余空间 */}
           <div className="flex-1 w-full flex items-center justify-center overflow-hidden min-h-0 mb-4">
             <div className="relative h-full aspect-9/16 shadow-2xl">
@@ -105,9 +106,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 形象选择列表 */}
-          <div className="w-full shrink-0 flex justify-center">
-             <div className="flex gap-3 overflow-x-auto max-w-full px-2 py-1 scrollbar-none">
+          {/* 形象选择列表 - 浮于左上 */}
+          <div className="absolute top-3 z-20 pointer-events-none">
+             <div className="flex flex-col gap-2 overflow-y-auto max-h-[70vh] w-24 scrollbar-none pointer-events-auto p-1">
                {AVATAR_LIST.map((avatar) => (
                  <button
                    key={avatar.id}
@@ -140,9 +141,11 @@ export default function Home() {
         </section>
 
         {/* 右侧区域：对话交互 (约33%) */}
-        <section className="flex flex-col flex-1 h-full bg-white relative border-l border-gray-100">
-          <ChatPanel />
-        </section>
+        {false && (
+          <section className="flex flex-col flex-1 h-full bg-white relative border-l border-gray-100">
+            <ChatPanel />
+          </section>
+        )}
       </div>
 
       {/* 底部控制栏 */}
@@ -167,15 +170,15 @@ export default function Home() {
              isProcessing={isProcessing}
            />
            <span className="text-xs text-gray-400">
-             {isProcessing ? '思考中...' : '点击说话'}
+            {isProcessing ? '回答中...' : '点击说话'}
            </span>
         </div>
 
         {/* 右侧：唤醒状态指示（仅在开启时显示） */}
-        {isWakeListening && (
+        {false && (
           <div className="absolute right-8 flex items-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-xs text-green-400">唤醒监听中</span>
+            <span className="text-xs text-green-400">聆听中</span>
           </div>
         )}
 

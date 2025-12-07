@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { speechToText } from '@/services/asr';
 import { chatStream } from '@/services/chat';
-import { textToSpeech } from '@/services/tts';
+import { streamTextToSpeech } from '@/services/tts';
 import { useChatStore } from '@/store/chatStore';
 import { useAvatarStore } from '@/store/avatarStore';
 
@@ -21,68 +21,87 @@ export function useVoiceInteraction() {
   const { addMessage, updateMessageContent, updateMessageStatus } = useChatStore();
   const { setAction } = useAvatarStore();
   
-  // 音频播放引用
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
+  const audioQueueRef = useRef<Array<{ audio: HTMLAudioElement; url: string }>>([]);
+  const playingRef = useRef(false);
+  const drainResolvers = useRef<Array<() => void>>([]);
 
   // 组件卸载时清理音频资源
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+      // 清理队列
+      for (const item of audioQueueRef.current) {
+        item.audio.pause();
+        URL.revokeObjectURL(item.url);
       }
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-        audioUrlRef.current = null;
-      }
+      audioQueueRef.current = [];
+      playingRef.current = false;
     };
   }, []);
 
-  // 清理当前播放的音频
-  const cleanupAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
+  const resolveDrain = useCallback(() => {
+    if (audioQueueRef.current.length === 0 && !playingRef.current) {
+      drainResolvers.current.forEach((fn) => fn());
+      drainResolvers.current = [];
     }
   }, []);
 
-  // 播放音频
-  const playAudio = useCallback(async (audioBuffer: ArrayBuffer): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      cleanupAudio();
-
-      const blob = new Blob([audioBuffer], { type: 'audio/mp3' });
-      const url = URL.createObjectURL(blob);
-      audioUrlRef.current = url;
-
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      
-      audio.onplay = () => {
-        setAction('talk');
-      };
-      
-      audio.onended = () => {
+  const playNextRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    playNextRef.current = () => {
+      if (playingRef.current) return;
+      const next = audioQueueRef.current.shift();
+      if (!next) {
         setAction('idle');
-        cleanupAudio();
-        resolve();
+        resolveDrain();
+        return;
+      }
+
+      playingRef.current = true;
+      const { audio, url } = next;
+
+      audio.onplay = () => setAction('talk');
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        playingRef.current = false;
+        playNextRef.current();
       };
-      
       audio.onerror = (e) => {
         console.error('音频播放错误:', e);
-        setAction('idle');
-        cleanupAudio();
-        reject(new Error('音频播放失败'));
+        URL.revokeObjectURL(url);
+        playingRef.current = false;
+        playNextRef.current();
       };
 
-      audio.play().catch(reject);
+      audio.play().catch((err) => {
+        console.error('音频播放失败:', err);
+        URL.revokeObjectURL(url);
+        playingRef.current = false;
+        playNextRef.current();
+      });
+    };
+  }, [resolveDrain, setAction]);
+
+  const enqueueAudio = useCallback(
+    
+    
+    (bytes: Uint8Array) => {
+      // Copy into a fresh Uint8Array to avoid SharedArrayBuffer typing issues
+      const safeBytes = new Uint8Array(bytes);
+      const blob = new Blob([safeBytes], { type: 'audio/mp3' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioQueueRef.current.push({ audio, url });
+      playNextRef.current();
+    },
+    []
+  );
+
+  const waitForDrain = useCallback(() => {
+    if (!playingRef.current && audioQueueRef.current.length === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      drainResolvers.current.push(resolve);
     });
-  }, [setAction, cleanupAudio]);
+  }, []);
 
   // 处理文本输入（流式语音识别后直接调用）
   const handleTextInput = useCallback(async (userText: string) => {
@@ -129,12 +148,14 @@ export function useVoiceInteraction() {
         throw new Error('AI 回复为空');
       }
 
-      // TTS: 文字转语音
-      console.log('🔊 生成语音...');
-      const audioBuffer = await textToSpeech(fullBotResponse);
-      
-      // 播放音频
-      await playAudio(audioBuffer);
+      console.log('🔊 流式生成语音...');
+      await streamTextToSpeech(fullBotResponse, {
+        onAudio: async (bytes) => {
+          enqueueAudio(bytes);
+        },
+      });
+
+      await waitForDrain();
 
     } catch (error) {
       console.error('语音交互错误:', error);
@@ -143,7 +164,15 @@ export function useVoiceInteraction() {
     } finally {
       setIsProcessing(false);
     }
-  }, [addMessage, updateMessageContent, updateMessageStatus, setAction, isProcessing, playAudio]);
+  }, [
+    addMessage,
+    updateMessageContent,
+    updateMessageStatus,
+    setAction,
+    isProcessing,
+    enqueueAudio,
+    waitForDrain,
+  ]);
 
   // 处理语音输入（录音后调用，需要先 ASR）
   const handleVoiceInput = useCallback(async (audioBlob: Blob) => {
