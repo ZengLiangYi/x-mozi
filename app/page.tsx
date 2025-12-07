@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { AvatarVideo } from "@/components/AvatarVideo";
 import { ChatPanel } from "@/components/ChatPanel";
 import { useVoiceInteraction } from "@/hooks/useVoiceInteraction";
+import { useWakeWord } from "@/hooks/useWakeWord";
 import { useAvatarStore } from "@/store/avatarStore";
 import { useChatStore } from "@/store/chatStore";
 import { AVATAR_LIST } from "@/types/avatar";
+import type { VoiceButtonRef } from "@/components/VoiceButton";
 
-// Dynamic import to avoid SSR issues with react-media-recorder (uses Worker API)
+// Dynamic import VoiceButton
 const VoiceButton = dynamic(
   () => import("@/components/VoiceButton").then((mod) => mod.VoiceButton),
   { ssr: false }
@@ -24,7 +26,50 @@ if (typeof window !== 'undefined') {
 
 export default function Home() {
   const { setAvatarId, currentAvatarId } = useAvatarStore();
-  const { isProcessing, handleVoiceInput } = useVoiceInteraction();
+  const { isProcessing, handleTextInput } = useVoiceInteraction();
+  
+  // VoiceButton ref（用于唤醒模式自动触发）
+  const voiceButtonRef = useRef<VoiceButtonRef>(null);
+
+  // 识别完成回调 - 发送给 AI
+  const handleResult = useCallback((text: string) => {
+    console.log('📝 识别完成:', text);
+    handleTextInput(text);
+  }, [handleTextInput]);
+
+  // 唤醒词触发 - 自动开始录音
+  const handleWakeUp = useCallback(() => {
+    console.log('🎤 唤醒词触发，自动开始录音');
+    // 自动触发录音按钮
+    if (voiceButtonRef.current && !isProcessing) {
+      voiceButtonRef.current.startRecording();
+    }
+  }, [isProcessing]);
+
+  // 唤醒词监听
+  const { isListening: isWakeListening, startListening, stopListening } = useWakeWord({
+    wakeWords: ['你好墨子', '墨子', '墨子你好'],
+    onWakeUp: handleWakeUp,
+  });
+
+  // 暴露唤醒控制到 window（控制台使用）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as Window & { 
+        startWakeWord?: () => void; 
+        stopWakeWord?: () => void;
+        isWakeWordEnabled?: () => boolean;
+      }).startWakeWord = () => {
+        startListening();
+        console.log('🎤 唤醒监听已开启，说"你好墨子"或"墨子"唤醒');
+      };
+      (window as Window & { stopWakeWord?: () => void }).stopWakeWord = () => {
+        stopListening();
+        console.log('🎤 唤醒监听已关闭');
+      };
+      (window as Window & { isWakeWordEnabled?: () => boolean }).isWakeWordEnabled = () => isWakeListening;
+    }
+  }, [startListening, stopListening, isWakeListening]);
 
   // Log console usage hint on mount
   useEffect(() => {
@@ -38,6 +83,12 @@ export default function Home() {
 💬 Chat 控制台命令:
   chatStore.getState().addMessage({ id: Date.now().toString(), role: 'user', content: '测试', timestamp: Date.now(), status: 'success' })
   chatStore.getState().clearMessages()
+
+🎤 语音唤醒命令:
+  startWakeWord()        // 开启唤醒监听
+  stopWakeWord()         // 关闭唤醒监听
+  isWakeWordEnabled()    // 查看状态
+  唤醒词: "你好墨子"、"墨子"、"墨子你好"
     `);
   }, []);
 
@@ -108,16 +159,25 @@ export default function Home() {
           </button>
         </div>
 
-        {/* 中间：语音交互按钮 */}
+        {/* 中间：语音输入按钮 */}
         <div className="flex flex-col items-center gap-1">
            <VoiceButton 
-             onRecordComplete={handleVoiceInput}
+             ref={voiceButtonRef}
+             onResult={handleResult}
              isProcessing={isProcessing}
            />
            <span className="text-xs text-gray-400">
              {isProcessing ? '思考中...' : '点击说话'}
            </span>
         </div>
+
+        {/* 右侧：唤醒状态指示（仅在开启时显示） */}
+        {isWakeListening && (
+          <div className="absolute right-8 flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-xs text-green-400">唤醒监听中</span>
+          </div>
+        )}
 
       </div>
     </main>

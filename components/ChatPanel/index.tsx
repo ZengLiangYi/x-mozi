@@ -24,8 +24,8 @@ export function ChatPanel() {
         {messages.length === 0 && (
             <div className="p-4">
                 <Welcome 
-                    title="欢迎使用 X-Mozi"
-                    description="我是你的智能助手，支持实时语音对话。"
+                    title="欢迎使用 X-Mozi" 
+                    description="我是你的智能双创导师，为你提供创业咨询和指导。"
                 />
             </div>
         )}

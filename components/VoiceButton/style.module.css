@@ -6,17 +6,9 @@
   position: relative;
 }
 
-.visualizerContainer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
 .button {
   height: 64px;
-  /* width and border-radius handled by framer-motion */
+  /* width and borderRadius handled by motion */
   border: none;
   background: #ffffff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -28,7 +20,7 @@
   justify-content: center;
   transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s;
   outline: none;
-  overflow: hidden; /* Clip visualizer if it exceeds bounds during animation */
+  overflow: hidden;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -50,3 +42,9 @@
   transform: none;
 }
 
+.visualizerWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}

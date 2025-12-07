@@ -1,24 +1,41 @@
 import { CozeAPI, ChatEventType, RoleType, COZE_COM_BASE_URL } from '@coze/api';
 
-export const runtime = 'nodejs'; // 强制使用 Node.js runtime
+export const runtime = 'nodejs';
 
+/**
+ * POST /api/chat
+ * 流式聊天 - 与 AI 进行对话
+ */
 export async function POST(request: Request) {
   try {
     const { message } = await request.json();
 
-    if (!message) {
-      return new Response('Message is required', { status: 400 });
+    if (!message || typeof message !== 'string') {
+      return Response.json(
+        { error: '请提供有效的消息内容' },
+        { status: 400 }
+      );
+    }
+
+    // 验证环境变量
+    const apiKey = process.env.COZE_API_KEY;
+    const botId = process.env.COZE_BOT_ID;
+
+    if (!apiKey || !botId) {
+      console.error('Chat: Coze 凭证未配置');
+      return Response.json(
+        { error: '服务配置错误' },
+        { status: 500 }
+      );
     }
 
     // 初始化 Coze Client
-    // 使用国际版 Base URL: COZE_COM_BASE_URL (https://api.coze.com)
     const client = new CozeAPI({
-      token: process.env.COZE_API_KEY!,
+      token: apiKey,
       baseURL: COZE_COM_BASE_URL,
       allowPersonalAccessTokenInBrowser: false,
     });
 
-    const botId = process.env.COZE_BOT_ID!;
     const userId = 'x-mozi';
 
     // 使用 chat.stream 接口发起对话
@@ -42,17 +59,15 @@ export async function POST(request: Request) {
           for await (const part of stream) {
             if (part.event === ChatEventType.CONVERSATION_MESSAGE_DELTA) {
               const content = part.data.content;
-              // 发送 SSE 格式数据
               controller.enqueue(
                 new TextEncoder().encode(`data: ${JSON.stringify({ content })}\n\n`)
               );
             }
-             // 可以处理其他事件，如 CONVERSATION_CHAT_COMPLETED
           }
           controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          console.error('Coze stream error:', error);
+          console.error('Coze 流式响应错误:', error);
           controller.error(error);
         }
       },
@@ -67,10 +82,11 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
-    console.error('Chat API Error:', error);
-    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    console.error('Chat 错误:', error);
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    return Response.json(
+      { error: '聊天服务错误', details: errorMessage },
+      { status: 500 }
+    );
   }
 }

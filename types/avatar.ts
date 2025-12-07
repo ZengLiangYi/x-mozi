@@ -11,56 +11,46 @@ export interface AvatarModel {
   };
 }
 
+/**
+ * 创建 Avatar 模型数据
+ * @param id Avatar ID
+ * @param name 显示名称
+ */
+function createAvatar(id: string, name: string): AvatarModel {
+  const basePath = `/videos/avatar-${id}`;
+  return {
+    id,
+    name,
+    thumbnail: `/avatars/avatar-${id}.png`,
+    videos: {
+      idle: `${basePath}/avatar-${id}-idle.mp4`,
+      talk: `${basePath}/avatar-${id}-talk.mp4`,
+      dance: `${basePath}/avatar-${id}-dance.mp4`,
+    },
+  };
+}
+
+/**
+ * Avatar 形象列表
+ */
 export const AVATAR_LIST: AvatarModel[] = [
-  {
-    id: '1',
-    name: '形象 1',
-    thumbnail: '/avatars/avatar-1.png',
-    videos: {
-      idle: '/videos/avatar-1-idle.mp4',
-      talk: '/videos/avatar-1-talk.mp4',
-      dance: '/videos/avatar-1-dance.mp4',
-    },
-  },
-  {
-    id: '2',
-    name: '形象 2',
-    thumbnail: '/avatars/avatar-2.png',
-    videos: {
-      idle: '/videos/avatar-2-idle.mp4',
-      talk: '/videos/avatar-2-talk.mp4',
-      dance: '/videos/avatar-2-dance.mp4',
-    },
-  },
-  {
-    id: '3',
-    name: '形象 3',
-    thumbnail: '/avatars/avatar-3.png',
-    videos: {
-      idle: '/videos/avatar-3-idle.mp4',
-      talk: '/videos/avatar-3-talk.mp4',
-      dance: '/videos/avatar-3-dance.mp4',
-    },
-  },
-  {
-    id: '4',
-    name: '形象 4',
-    thumbnail: '/avatars/avatar-4.png',
-    videos: {
-      idle: '/videos/avatar-4-idle.mp4',
-      talk: '/videos/avatar-4-talk.mp4',
-      dance: '/videos/avatar-4-dance.mp4',
-    },
-  },
-  {
-    id: '5',
-    name: '形象 5',
-    thumbnail: '/avatars/avatar-5.png',
-    videos: {
-      idle: '/videos/avatar-5-idle.mp4',
-      talk: '/videos/avatar-5-talk.mp4',
-      dance: '/videos/avatar-5-dance.mp4',
-    },
-  },
+  createAvatar('1', '形象 1'),
+  createAvatar('2', '形象 2'),
+  createAvatar('3', '形象 3'),
+  createAvatar('4', '形象 4'),
+  createAvatar('5', '形象 5'),
 ];
 
+/**
+ * 根据 ID 获取 Avatar
+ */
+export function getAvatarById(id: string): AvatarModel | undefined {
+  return AVATAR_LIST.find(avatar => avatar.id === id);
+}
+
+/**
+ * 获取默认 Avatar
+ */
+export function getDefaultAvatar(): AvatarModel {
+  return AVATAR_LIST[0];
+}
