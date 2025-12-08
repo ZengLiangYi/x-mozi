@@ -180,6 +180,7 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
         } else {
           // 临时结果
           const currentText = accumulatedTextRef.current + text;
+          accumulatedTextRef.current = currentText; // 便于手动停止时也能拿到最新文本
           setTranscript(currentText);
           onInterimRef.current?.(currentText);
         }
@@ -294,7 +295,7 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
     isStoppedRef.current = true;
     clearSilenceTimeout();
     
-    const text = accumulatedTextRef.current.trim();
+    const text = (accumulatedTextRef.current || transcript).trim();
     cleanup();
     setIsRecording(false);
     
@@ -305,7 +306,7 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
     
     accumulatedTextRef.current = '';
     setTranscript('');
-  }, [cleanup, clearSilenceTimeout]);
+  }, [cleanup, clearSilenceTimeout, transcript]);
 
   return {
     isRecording,

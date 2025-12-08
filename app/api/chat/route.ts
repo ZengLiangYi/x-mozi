@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: Request) {
   try {
-    const { message } = await request.json();
+    const { message, language, systemPrompt } = await request.json();
 
     if (!message || typeof message !== 'string') {
       return Response.json(
@@ -37,6 +37,9 @@ export async function POST(request: Request) {
     });
 
     const userId = 'x-mozi';
+    const isEnglish = language === 'en';
+    const prompt = systemPrompt || 'Please respond in English.';
+    const finalMessage = isEnglish ? `${prompt}\n\n${message}` : message;
 
     // 使用 chat.stream 接口发起对话
     const stream = await client.chat.stream({
@@ -45,7 +48,7 @@ export async function POST(request: Request) {
       additional_messages: [
         {
           role: RoleType.User,
-          content: message,
+          content: finalMessage,
           content_type: 'text',
         },
       ],

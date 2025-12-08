@@ -6,6 +6,7 @@ import { chatStream } from '@/services/chat';
 import { streamTextToSpeech } from '@/services/tts';
 import { useChatStore } from '@/store/chatStore';
 import { useAvatarStore } from '@/store/avatarStore';
+import { useLanguageStore } from '@/store/languageStore';
 
 /** 生成唯一 ID */
 function generateId(): string {
@@ -20,6 +21,7 @@ export function useVoiceInteraction() {
   const [isProcessing, setIsProcessing] = useState(false);
   const { addMessage, updateMessageContent, updateMessageStatus } = useChatStore();
   const { setAction } = useAvatarStore();
+  const { language } = useLanguageStore();
   
   const audioQueueRef = useRef<Array<{ audio: HTMLAudioElement; url: string }>>([]);
   const playingRef = useRef(false);
@@ -136,10 +138,17 @@ export function useVoiceInteraction() {
       let fullBotResponse = '';
       console.log('🤖 发送给 AI...');
       
-      await chatStream(userText, (chunk) => {
-        fullBotResponse += chunk;
-        updateMessageContent(botMsgId, fullBotResponse);
-      });
+      await chatStream(
+        userText,
+        (chunk) => {
+          fullBotResponse += chunk;
+          updateMessageContent(botMsgId, fullBotResponse);
+        },
+        {
+          language,
+          systemPrompt: 'Please respond in English.',
+        }
+      );
       
       updateMessageStatus(botMsgId, 'success');
       console.log('🤖 AI 回复:', fullBotResponse);
@@ -172,6 +181,7 @@ export function useVoiceInteraction() {
     isProcessing,
     enqueueAudio,
     waitForDrain,
+    language,
   ]);
 
   // 处理语音输入（录音后调用，需要先 ASR）

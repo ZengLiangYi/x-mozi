@@ -18,7 +18,17 @@ export const useAvatarStore = create<AvatarState>((set) => ({
   isPlaying: true,
 
   setAvatarId: (id) => set({ currentAvatarId: id }),
-  setAction: (action) => set({ action }),
+  setAction: (nextAction) =>
+    set((state) => {
+      // Prevent talk -> dance interruption per state spec
+      if (state.action === 'talk' && nextAction === 'dance') {
+        return state;
+      }
+      if (state.action === nextAction) {
+        return state;
+      }
+      return { action: nextAction };
+    }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
 }));
 
