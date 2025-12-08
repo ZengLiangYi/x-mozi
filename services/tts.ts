@@ -92,19 +92,28 @@ export async function textToSpeech(text: string): Promise<ArrayBuffer> {
 interface StreamEvents {
   onAudio: (bytes: Uint8Array) => void | Promise<void>;
   onStatus?: (status: unknown) => void;
+  /** AbortSignal 用于取消请求（如用户打断） */
+  signal?: AbortSignal;
 }
 
 /**
  * 流式文字转语音（服务端 SSE 下发 base64 音频片段）
+ * @param events.signal AbortSignal 用于取消请求
  */
 export async function streamTextToSpeech(
   text: string,
   events: StreamEvents
 ): Promise<void> {
+  // 检查是否已取消
+  if (events.signal?.aborted) {
+    throw new RequestError('请求已取消', 0);
+  }
+
   const response = await fetch('/api/tts/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
+    signal: events.signal,
   });
 
   if (!response.ok || !response.body) {
@@ -120,41 +129,53 @@ export async function streamTextToSpeech(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) !== -1) {
-      const chunk = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const chunk = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
 
-      if (!chunk.startsWith('data: ')) continue;
-      const dataStr = chunk.slice(6).trim();
-      if (dataStr === '[DONE]') {
-        return;
-      }
-
-      try {
-        const payload = JSON.parse(dataStr) as
-          | { event: 'audio'; data: string }
-          | { event: 'status'; data: unknown }
-          | { event: 'ready' }
-          | { event: 'end' }
-          | { event: 'error'; message: string };
-
-        if (payload.event === 'audio') {
-          await events.onAudio(base64ToBytes(payload.data));
-        } else if (payload.event === 'status' && events.onStatus) {
-          events.onStatus(payload.data);
-        } else if (payload.event === 'error') {
-          throw new RequestError(payload.message, 500);
+        if (!chunk.startsWith('data: ')) continue;
+        const dataStr = chunk.slice(6).trim();
+        if (dataStr === '[DONE]') {
+          return;
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : '流式解析错误';
-        throw new RequestError(message, 500);
+
+        try {
+          const payload = JSON.parse(dataStr) as
+            | { event: 'audio'; data: string }
+            | { event: 'status'; data: unknown }
+            | { event: 'ready' }
+            | { event: 'end' }
+            | { event: 'error'; message: string };
+
+          if (payload.event === 'audio') {
+            await events.onAudio(base64ToBytes(payload.data));
+          } else if (payload.event === 'status' && events.onStatus) {
+            events.onStatus(payload.data);
+          } else if (payload.event === 'error') {
+            throw new RequestError(payload.message, 500);
+          }
+        } catch (err) {
+          // 如果是 RequestError，直接抛出
+          if (err instanceof RequestError) {
+            throw err;
+          }
+          const message = err instanceof Error ? err.message : '流式解析错误';
+          throw new RequestError(message, 500);
+        }
       }
     }
+  } catch (err) {
+    // 处理 abort 错误
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new RequestError('请求已取消', 0);
+    }
+    throw err;
   }
 }

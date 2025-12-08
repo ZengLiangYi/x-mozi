@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { speechToText } from '@/services/asr';
 import { chatStream } from '@/services/chat';
 import { streamTextToSpeech } from '@/services/tts';
 import { useChatStore } from '@/store/chatStore';
 import { useAvatarStore } from '@/store/avatarStore';
 import { useLanguageStore } from '@/store/languageStore';
+import { useWakeStore } from '@/store/wakeStore';
 
 /** 生成唯一 ID */
 function generateId(): string {
@@ -18,18 +19,38 @@ function generateId(): string {
  * 处理完整的语音交互流程：ASR -> Chat -> TTS -> 播放
  */
 export function useVoiceInteraction() {
-  const [isProcessing, setIsProcessing] = useState(false);
   const { addMessage, updateMessageContent, updateMessageStatus } = useChatStore();
   const { setAction } = useAvatarStore();
   const { language } = useLanguageStore();
+  const { isProcessing, setIsProcessing, setPhase, reset } = useWakeStore();
   
   const audioQueueRef = useRef<Array<{ audio: HTMLAudioElement; url: string }>>([]);
   const playingRef = useRef(false);
   const drainResolvers = useRef<Array<() => void>>([]);
+  
+  // 追踪当前正在播放的音频（已从队列移出）
+  const currentAudioRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
+  
+  // 用于取消正在进行的请求
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // 标记是否被打断（避免 finally 重复重置状态）
+  const wasInterruptedRef = useRef(false);
 
   // 组件卸载时清理音频资源
   useEffect(() => {
     return () => {
+      // 取消进行中的请求
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      
+      // 停止当前正在播放的音频
+      if (currentAudioRef.current) {
+        currentAudioRef.current.audio.pause();
+        URL.revokeObjectURL(currentAudioRef.current.url);
+        currentAudioRef.current = null;
+      }
+      
       // 清理队列
       for (const item of audioQueueRef.current) {
         item.audio.pause();
@@ -53,23 +74,27 @@ export function useVoiceInteraction() {
       if (playingRef.current) return;
       const next = audioQueueRef.current.shift();
       if (!next) {
+        currentAudioRef.current = null;
         setAction('idle');
         resolveDrain();
         return;
       }
 
       playingRef.current = true;
+      currentAudioRef.current = next; // 追踪当前播放的音频
       const { audio, url } = next;
 
       audio.onplay = () => setAction('talk');
       audio.onended = () => {
         URL.revokeObjectURL(url);
+        currentAudioRef.current = null;
         playingRef.current = false;
         playNextRef.current();
       };
       audio.onerror = (e) => {
         console.error('音频播放错误:', e);
         URL.revokeObjectURL(url);
+        currentAudioRef.current = null;
         playingRef.current = false;
         playNextRef.current();
       };
@@ -77,6 +102,7 @@ export function useVoiceInteraction() {
       audio.play().catch((err) => {
         console.error('音频播放失败:', err);
         URL.revokeObjectURL(url);
+        currentAudioRef.current = null;
         playingRef.current = false;
         playNextRef.current();
       });
@@ -105,13 +131,61 @@ export function useVoiceInteraction() {
     });
   }, []);
 
+  /**
+   * 打断当前回复
+   * 停止音频播放、取消流式请求、重置状态
+   */
+  const interrupt = useCallback(() => {
+    console.log('🛑 用户打断回复');
+    
+    // 标记已被打断
+    wasInterruptedRef.current = true;
+    
+    // 1. 取消进行中的请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // 2. 停止当前正在播放的音频
+    if (currentAudioRef.current) {
+      currentAudioRef.current.audio.pause();
+      URL.revokeObjectURL(currentAudioRef.current.url);
+      currentAudioRef.current = null;
+    }
+    
+    // 3. 清空队列中的音频
+    for (const item of audioQueueRef.current) {
+      item.audio.pause();
+      URL.revokeObjectURL(item.url);
+    }
+    audioQueueRef.current = [];
+    playingRef.current = false;
+    
+    // 4. 重置状态（使用单一 action 保证原子性）
+    setAction('idle');
+    reset(); // 同时重置 isProcessing 和 phase
+    
+    // 5. 清理 drain resolvers
+    drainResolvers.current.forEach((fn) => fn());
+    drainResolvers.current = [];
+  }, [setAction, reset]);
+
   // 处理文本输入（流式语音识别后直接调用）
   const handleTextInput = useCallback(async (userText: string) => {
     if (isProcessing || !userText.trim()) return;
     
+    // 重置打断标记
+    wasInterruptedRef.current = false;
+    
     setIsProcessing(true);
+    setPhase('thinking'); // 开始思考
     const msgId = generateId();
     const botMsgId = generateId();
+    
+    // 创建新的 AbortController
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     try {
       console.log('📝 处理用户输入:', userText);
@@ -147,6 +221,7 @@ export function useVoiceInteraction() {
         {
           language,
           systemPrompt: 'Please respond in English.',
+          signal,
         }
       );
       
@@ -157,27 +232,51 @@ export function useVoiceInteraction() {
         throw new Error('AI 回复为空');
       }
 
+      setPhase('speaking'); // 开始说话
       console.log('🔊 流式生成语音...');
       await streamTextToSpeech(fullBotResponse, {
         onAudio: async (bytes) => {
           enqueueAudio(bytes);
         },
+        signal,
       });
 
       await waitForDrain();
+      setPhase('idle'); // 说完了
 
     } catch (error) {
+      // 如果是用户打断导致的取消，不视为错误
+      if (signal.aborted || wasInterruptedRef.current) {
+        console.log('🛑 请求已被用户打断');
+        // 如果有部分响应，标记为成功（已显示的内容）
+        const currentContent = useChatStore.getState().messages.find(m => m.id === botMsgId)?.content;
+        if (currentContent) {
+          updateMessageStatus(botMsgId, 'success');
+        }
+        // 状态已在 interrupt() 中重置，直接返回
+        return;
+      }
+      
       console.error('语音交互错误:', error);
       setAction('idle');
+      setPhase('idle');
       updateMessageStatus(botMsgId, 'error');
     } finally {
-      setIsProcessing(false);
+      // 清理 controller 引用
+      if (abortControllerRef.current?.signal === signal) {
+        abortControllerRef.current = null;
+      }
+      // 只有非打断情况才在 finally 中重置状态（打断时已在 interrupt() 中重置）
+      if (!wasInterruptedRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [
     addMessage,
     updateMessageContent,
     updateMessageStatus,
     setAction,
+    setPhase,
     isProcessing,
     enqueueAudio,
     waitForDrain,
@@ -218,5 +317,6 @@ export function useVoiceInteraction() {
     isProcessing,
     handleVoiceInput,
     handleTextInput,
+    interrupt,
   };
 }

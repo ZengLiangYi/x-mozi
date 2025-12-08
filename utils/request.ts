@@ -172,25 +172,37 @@ export const request = {
   /**
    * 流式请求 (用于 SSE)
    * 注意：axios 不直接支持 SSE，这里使用 fetch
+   * @param signal 外部 AbortSignal，用于取消请求（如用户打断）
    */
   async stream(
     url: string,
     data: unknown,
     onMessage: (content: string) => void,
-    config?: { timeout?: number }
+    config?: { timeout?: number; signal?: AbortSignal }
   ): Promise<void> {
-    const controller = new AbortController();
+    // 如果有外部 signal，使用它；否则创建内部 controller 用于超时
+    const internalController = new AbortController();
     const timeoutId = setTimeout(
-      () => controller.abort(),
+      () => internalController.abort(),
       config?.timeout || 60000
     );
+
+    // 监听外部 signal，触发内部 abort
+    const externalSignal = config?.signal;
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        clearTimeout(timeoutId);
+        throw new RequestError('请求已取消', 0);
+      }
+      externalSignal.addEventListener('abort', () => internalController.abort());
+    }
 
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-        signal: controller.signal,
+        signal: internalController.signal,
       });
 
       clearTimeout(timeoutId);
@@ -243,6 +255,10 @@ export const request = {
       
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
+          // 区分外部取消和内部超时
+          if (externalSignal?.aborted) {
+            throw new RequestError('请求已取消', 0);
+          }
           throw new RequestError('请求超时', 408);
         }
         throw new RequestError(error.message, 500);

@@ -10,9 +10,9 @@
   height: 64px;
   /* width and borderRadius handled by motion */
   border: none;
-  background: #ffffff;
+  background: var(--card);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  color: #333;
+  color: var(--card-foreground);
   font-size: 24px;
   cursor: pointer;
   display: flex;
@@ -29,17 +29,35 @@
 }
 
 .button.active {
-  background: #f5222d;
-  color: white;
-  box-shadow: 0 8px 20px rgba(245, 34, 45, 0.3);
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3); /* red-500 shadow */
 }
 
 .button:disabled {
-  background: #f0f0f0;
-  color: #ccc;
+  background: var(--muted);
+  color: var(--muted-foreground);
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+/* 处理中状态（可点击打断） */
+.button.processing {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  color: var(--primary-foreground);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4); /* primary shadow */
+  cursor: pointer;
+}
+
+.button.processing:hover {
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.5);
+}
+
+.interruptIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .visualizerWrapper {

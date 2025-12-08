@@ -19,6 +19,39 @@ type StreamEvent =
   | { event: 'error'; message: string }
   | { event: 'end' };
 
+/**
+ * 清理 Markdown 格式，提取纯文本用于语音合成
+ * - 移除 # 开头的标题行
+ * - 移除 **粗体**、*斜体* 标记
+ * - 移除 [链接](url) 格式，保留链接文字
+ * - 移除 `代码` 标记
+ * - 移除 --- 分隔线
+ */
+function cleanMarkdown(text: string): string {
+  return text
+    // 移除标题行（# 开头的整行）
+    .replace(/^#{1,6}\s+.*$/gm, '')
+    // 移除粗体标记 **text** 或 __text__，保留内容
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    // 移除斜体标记 *text* 或 _text_，保留内容
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    // 移除链接 [text](url)，保留链接文字
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // 移除图片 ![alt](url)
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
+    // 移除行内代码 `code`
+    .replace(/`([^`]+)`/g, '$1')
+    // 移除代码块 ```...```
+    .replace(/```[\s\S]*?```/g, '')
+    // 移除分隔线 ---
+    .replace(/^-{3,}$/gm, '')
+    // 移除多余空行（连续多个换行变成单个）
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function splitText(text: string): string[] {
   const trimmed = text.trim();
   if (trimmed.length <= MAX_STREAM_CHARS) return [trimmed];
@@ -107,7 +140,15 @@ export async function POST(request: Request) {
         const run = async () => {
           try {
             controller.enqueue(encoder.encode(toSse({ event: 'ready' })));
-            const chunks = splitText(text);
+            // 清理 Markdown 格式后再分段
+            const cleanedText = cleanMarkdown(text);
+            if (!cleanedText.trim()) {
+              controller.enqueue(encoder.encode(toSse({ event: 'end' })));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+              return;
+            }
+            const chunks = splitText(cleanedText);
 
             for (const chunk of chunks) {
               const params: TextToVoiceRequest = {

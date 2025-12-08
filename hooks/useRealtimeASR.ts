@@ -64,7 +64,8 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   
   // Refs - 状态引用
-  const accumulatedTextRef = useRef('');
+  const accumulatedTextRef = useRef('');  // 已确认的累积文本（final 结果）
+  const currentSentenceRef = useRef('');  // 当前句子的临时文本（interim 结果，会被替换）
   const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isStoppedRef = useRef(false);
   
@@ -133,7 +134,8 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
 
   // 完成录音并发送结果
   const finishRecording = useCallback(() => {
-    const text = accumulatedTextRef.current.trim();
+    // 合并已累积文本和当前句子
+    const text = (accumulatedTextRef.current + currentSentenceRef.current).trim();
     console.log('🎤 录音完成:', text);
     
     cleanup();
@@ -144,6 +146,7 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
     }
     
     accumulatedTextRef.current = '';
+    currentSentenceRef.current = '';
     setTranscript('');
   }, [cleanup]);
 
@@ -166,8 +169,9 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
         clearSilenceTimeout();
         
         if (isFinal) {
-          // VAD 检测到静音，累积文本
+          // VAD 检测到静音，当前句子确认完成，累积到总文本
           accumulatedTextRef.current += text;
+          currentSentenceRef.current = '';  // 清空当前句子
           setTranscript(accumulatedTextRef.current);
           onInterimRef.current?.(accumulatedTextRef.current);
           
@@ -178,11 +182,11 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
             }
           }, silenceTimeout);
         } else {
-          // 临时结果
-          const currentText = accumulatedTextRef.current + text;
-          accumulatedTextRef.current = currentText; // 便于手动停止时也能拿到最新文本
-          setTranscript(currentText);
-          onInterimRef.current?.(currentText);
+          // 临时结果：替换当前句子（不累加），显示 = 已累积 + 当前句子
+          currentSentenceRef.current = text;
+          const displayText = accumulatedTextRef.current + text;
+          setTranscript(displayText);
+          onInterimRef.current?.(displayText);
         }
       }
     } catch {
@@ -231,6 +235,7 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
     isStoppedRef.current = false;
     setError(null);
     accumulatedTextRef.current = '';
+    currentSentenceRef.current = '';
     setTranscript('');
 
     try {
@@ -274,8 +279,8 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
 
       ws.onclose = () => {
         if (!isStoppedRef.current) {
-          // 连接意外关闭，返回已累积的结果
-          const text = accumulatedTextRef.current.trim();
+          // 连接意外关闭，返回已累积的结果（包括当前句子）
+          const text = (accumulatedTextRef.current + currentSentenceRef.current).trim();
           if (text) {
             onResultRef.current?.(text);
           }
@@ -295,7 +300,8 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
     isStoppedRef.current = true;
     clearSilenceTimeout();
     
-    const text = (accumulatedTextRef.current || transcript).trim();
+    // 合并已累积文本和当前句子的临时结果
+    const text = (accumulatedTextRef.current + currentSentenceRef.current).trim() || transcript.trim();
     cleanup();
     setIsRecording(false);
     
@@ -305,6 +311,7 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
     }
     
     accumulatedTextRef.current = '';
+    currentSentenceRef.current = '';
     setTranscript('');
   }, [cleanup, clearSilenceTimeout, transcript]);
 

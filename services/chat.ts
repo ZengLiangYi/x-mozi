@@ -5,11 +5,13 @@ import { Language } from '@/store/languageStore';
  * 流式聊天
  * @param message 用户消息
  * @param onMessage 收到消息回调
+ * @param options.signal AbortSignal 用于取消请求（如用户打断）
  * @throws 请求失败时抛出 RequestError
  */
 export interface ChatStreamOptions {
   language?: Language;
   systemPrompt?: string;
+  signal?: AbortSignal;
 }
 
 export async function chatStream(
@@ -25,6 +27,6 @@ export async function chatStream(
       systemPrompt: options?.systemPrompt,
     },
     onMessage,
-    { timeout: 60000 } // Chat 60秒超时
+    { timeout: 60000, signal: options?.signal }
   );
 }
