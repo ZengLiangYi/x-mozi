@@ -173,33 +173,33 @@ export default function Home() {
       <div className="flex flex-1 w-full overflow-hidden">
         {/* 左侧区域：智能体展示 (约66%) */}
         <section className="flex flex-col flex-2 h-full border-r border-border relative">
+          {/* 左上角状态提示 */}
+          {phase !== 'idle' && (
+            <div className="absolute top-4 left-4 z-40">
+              <div className={`px-4 py-2 rounded-full backdrop-blur-sm flex items-center gap-2 ${
+                phase === 'thinking' 
+                  ? 'bg-primary/80 text-primary-foreground' 
+                  : 'bg-success/80 text-success-foreground'
+              }`}>
+                {phase === 'thinking' ? (
+                  <>
+                    <span className="animate-pulse">●</span>
+                    <span className="text-sm font-medium">正在思考...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="animate-pulse">●</span>
+                    <span className="text-sm font-medium">正在回答...</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 视频播放容器 - 自适应剩余空间 */}
           <div className="flex-1 w-full flex items-center justify-center overflow-hidden min-h-0 mb-4">
             <div className="relative h-full aspect-9/16 shadow-2xl">
                <AvatarVideo />
-               
-               {/* 顶部状态提示 */}
-               {phase !== 'idle' && (
-                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40">
-                   <div className={`px-4 py-2 rounded-full backdrop-blur-sm flex items-center gap-2 ${
-                     phase === 'thinking' 
-                       ? 'bg-primary/80 text-primary-foreground' 
-                       : 'bg-success/80 text-success-foreground'
-                   }`}>
-                     {phase === 'thinking' ? (
-                       <>
-                         <span className="animate-pulse">●</span>
-                         <span className="text-sm font-medium">正在思考...</span>
-                       </>
-                     ) : (
-                       <>
-                         <span className="animate-pulse">●</span>
-                         <span className="text-sm font-medium">正在回答...</span>
-                       </>
-                     )}
-                   </div>
-                 </div>
-               )}
             </div>
           </div>
 

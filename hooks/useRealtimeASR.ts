@@ -117,11 +117,24 @@ export function useRealtimeASR(options: UseRealtimeASROptions = {}): UseRealtime
 
     // 关闭 WebSocket
     if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'end' }));
-      }
-      wsRef.current.close();
+      const ws = wsRef.current;
       wsRef.current = null;
+      
+      if (ws.readyState === WebSocket.OPEN) {
+        // 连接已打开，发送结束信号后关闭
+        ws.send(JSON.stringify({ type: 'end' }));
+        ws.close();
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        // 连接中，清空所有回调防止影响新的录音状态，然后在连接成功后关闭
+        ws.onopen = () => ws.close();
+        ws.onclose = () => {};  // 忽略关闭事件，防止影响新录音的 isRecording 状态
+        ws.onmessage = () => {}; // 忽略消息
+        ws.onerror = () => {}; // 忽略连接错误
+      } else if (ws.readyState === WebSocket.CLOSING) {
+        // 正在关闭，无需操作
+      } else {
+        // 已关闭，无需操作
+      }
     }
   }, [clearSilenceTimeout]);
 
