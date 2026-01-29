@@ -36,9 +36,9 @@ function createAvatar(id: string, name: string): AvatarModel {
 export const AVATAR_LIST: AvatarModel[] = [
   createAvatar('1', '形象 1'),
   createAvatar('2', '形象 2'),
-  createAvatar('3', '形象 3'),
-  createAvatar('4', '形象 4'),
-  createAvatar('5', '形象 5'),
+  // createAvatar('3', '形象 3'),
+  // createAvatar('4', '形象 4'),
+  // createAvatar('5', '形象 5'),
 ];
 
 /**
