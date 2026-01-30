@@ -18,6 +18,11 @@ declare namespace NodeJS {
     /** Coze Bot ID */
     COZE_BOT_ID?: string;
     
+    /** Wav2Lip 后端服务地址 */
+    WAV2LIP_BASE_URL?: string;
+    /** 是否启用 Lip-sync（客户端可见） */
+    NEXT_PUBLIC_LIPSYNC_ENABLED?: string;
+    
     /** Node 环境 */
     NODE_ENV: 'development' | 'production' | 'test';
   }

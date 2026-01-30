@@ -1,13 +1,15 @@
-export type AvatarAction = 'idle' | 'talk' | 'dance';
+export type AvatarAction = 'idle' | 'talk' | 'dance' | 'think';
 
 export interface AvatarModel {
   id: string;
   name: string;
-  thumbnail: string;
+  thumbnail: string;   // 预览缩略图：/avatars/avatar-${id}-preview.png
+  faceImage: string;   // 对口型全身照：/avatars/avatar-${id}.png
   videos: {
     idle: string;
     talk: string;
     dance: string;
+    think: string;     // 思考/等待动画
   };
 }
 
@@ -21,11 +23,13 @@ function createAvatar(id: string, name: string): AvatarModel {
   return {
     id,
     name,
-    thumbnail: `/avatars/avatar-${id}.png`,
+    thumbnail: `/avatars/avatar-${id}-preview.png`,  // 预览图
+    faceImage: `/avatars/avatar-${id}.png`,          // 对口型全身照
     videos: {
       idle: `${basePath}/avatar-${id}-idle.mp4`,
       talk: `${basePath}/avatar-${id}-talk.mp4`,
       dance: `${basePath}/avatar-${id}-dance.mp4`,
+      think: `${basePath}/avatar-${id}-think.mp4`,   // 等待生成时播放
     },
   };
 }
