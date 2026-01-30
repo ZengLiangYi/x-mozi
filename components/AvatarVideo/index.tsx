@@ -49,17 +49,17 @@ export function AvatarVideo() {
     console.error(`视频加载失败: ${currentVideoSrc}`);
   }, [currentVideoSrc]);
 
-  // 应用启动或 avatar 切换时，自动上传全身照用于对口型
+  // 应用启动或 avatar 切换时，自动上传人脸文件（视频）用于对口型
   useEffect(() => {
     if (lipsyncEnabled && currentAvatarId && !faceFileId) {
-      console.log('上传 avatar 全身照:', currentAvatar.faceImage);
+      console.log('上传 avatar 人脸视频:', currentAvatar.faceImage);
       uploadFaceImage(currentAvatar.faceImage)
         .then(fileId => {
-          console.log('全身照上传成功:', fileId);
+          console.log('人脸视频上传成功:', fileId);
           setFaceFileId(fileId);
         })
         .catch(err => {
-          console.error('上传全身照失败:', err);
+          console.error('上传人脸视频失败:', err);
         });
     }
   }, [currentAvatarId, lipsyncEnabled, faceFileId, currentAvatar.faceImage, setFaceFileId]);

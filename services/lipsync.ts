@@ -57,31 +57,44 @@ export interface UploadResponse {
 }
 
 /**
- * 上传人脸全身照
- * @param imageUrl 图片 URL（来自 public 目录）
+ * 上传人脸文件（支持图片或视频）
+ * @param fileUrl 文件 URL（来自 public 目录）
  * @returns file_id
  */
-export async function uploadFaceImage(imageUrl: string): Promise<string> {
-  console.log('开始上传人脸图片:', imageUrl);
+export async function uploadFaceImage(fileUrl: string): Promise<string> {
+  console.log('开始上传人脸文件:', fileUrl);
   
-  // 先获取图片数据
-  const imageResponse = await fetch(imageUrl);
-  if (!imageResponse.ok) {
-    throw new Error(`无法获取图片: ${imageResponse.status}`);
+  // 先获取文件数据
+  const fileResponse = await fetch(fileUrl);
+  if (!fileResponse.ok) {
+    throw new Error(`无法获取文件: ${fileResponse.status}`);
   }
   
   // 使用 arrayBuffer 确保数据完整性
-  const arrayBuffer = await imageResponse.arrayBuffer();
-  const contentType = imageResponse.headers.get('content-type') || 'image/png';
-  const imageBlob = new Blob([arrayBuffer], { type: contentType });
+  const arrayBuffer = await fileResponse.arrayBuffer();
+  // 根据 URL 扩展名或响应头判断类型
+  let contentType = fileResponse.headers.get('content-type');
+  if (!contentType || contentType === 'application/octet-stream') {
+    // 根据扩展名判断
+    if (fileUrl.endsWith('.mp4')) {
+      contentType = 'video/mp4';
+    } else if (fileUrl.endsWith('.png')) {
+      contentType = 'image/png';
+    } else if (fileUrl.endsWith('.jpg') || fileUrl.endsWith('.jpeg')) {
+      contentType = 'image/jpeg';
+    } else {
+      contentType = 'application/octet-stream';
+    }
+  }
+  const fileBlob = new Blob([arrayBuffer], { type: contentType });
   
-  console.log(`图片获取成功: 大小=${imageBlob.size} bytes, 类型=${imageBlob.type}`);
+  console.log(`文件获取成功: 大小=${fileBlob.size} bytes, 类型=${fileBlob.type}`);
   
   // 从 URL 提取文件名
-  const fileName = imageUrl.split('/').pop() || 'avatar.png';
+  const fileName = fileUrl.split('/').pop() || 'avatar.mp4';
   
   const formData = new FormData();
-  formData.append('file', imageBlob, fileName);
+  formData.append('file', fileBlob, fileName);
   
   const response = await fetch('/api/lipsync/upload-face', {
     method: 'POST',
@@ -90,12 +103,12 @@ export async function uploadFaceImage(imageUrl: string): Promise<string> {
   
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: '上传失败' }));
-    console.error('上传人脸失败:', error);
-    throw new Error(error.error || error.details || '上传人脸失败');
+    console.error('上传人脸文件失败:', error);
+    throw new Error(error.error || error.details || '上传人脸文件失败');
   }
   
   const data: UploadResponse = await response.json();
-  console.log('人脸上传成功, file_id:', data.file_id);
+  console.log('人脸文件上传成功, file_id:', data.file_id);
   return data.file_id;
 }
 

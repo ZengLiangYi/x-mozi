@@ -17,24 +17,24 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     
     let fileBlob: Blob;
-    let fileName: string = 'avatar.png';
+    let fileName: string = 'avatar.mp4';
     
     if (contentType.includes('multipart/form-data')) {
-      // 接收文件上传
+      // 接收文件上传（支持图片或视频）
       const formData = await request.formData();
       const file = formData.get('file');
       
       if (!file || !(file instanceof Blob)) {
         return NextResponse.json(
-          { error: '请提供图片文件' },
+          { error: '请提供人脸文件（图片或视频）' },
           { status: 400 }
         );
       }
       
       // 转换为 ArrayBuffer 再创建新的 Blob，确保数据完整
       const arrayBuffer = await file.arrayBuffer();
-      fileBlob = new Blob([arrayBuffer], { type: file.type || 'image/png' });
-      fileName = file instanceof File ? file.name : 'avatar.png';
+      fileBlob = new Blob([arrayBuffer], { type: file.type || 'video/mp4' });
+      fileName = file instanceof File ? file.name : 'avatar.mp4';
       
       console.log(`接收到文件: ${fileName}, 大小: ${fileBlob.size} bytes, 类型: ${fileBlob.type}`);
       

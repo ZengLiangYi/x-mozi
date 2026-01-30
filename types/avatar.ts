@@ -24,7 +24,7 @@ function createAvatar(id: string, name: string): AvatarModel {
     id,
     name,
     thumbnail: `/avatars/avatar-${id}-preview.png`,  // 预览图
-    faceImage: `/avatars/avatar-${id}.png`,          // 对口型全身照
+    faceImage: `${basePath}/avatar-${id}-talk.mp4`,  // 对口型视频源
     videos: {
       idle: `${basePath}/avatar-${id}-idle.mp4`,
       talk: `${basePath}/avatar-${id}-talk.mp4`,
