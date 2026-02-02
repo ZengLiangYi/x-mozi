@@ -198,7 +198,7 @@ export default function Home() {
 
           {/* 视频播放容器 - 自适应剩余空间 */}
           <div className="flex-1 w-full flex items-center justify-center overflow-hidden min-h-0 mb-4">
-            <div className="relative h-full aspect-9/16 shadow-2xl">
+            <div className="relative h-full aspect-9/16">
                <AvatarVideo />
             </div>
           </div>

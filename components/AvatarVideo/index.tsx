@@ -10,6 +10,8 @@ import styles from "./style.module.css";
  * Avatar 视频播放组件
  * 根据当前状态（idle/talk/dance/think）播放对应视频
  * 当 action = 'talk' 且 lipsync 启用时，显示 Canvas 渲染对口型帧
+ * 
+ * 使用多个预加载的 video 元素，通过 CSS visibility 切换，避免重新加载导致的闪烁
  */
 export function AvatarVideo() {
   const { 
@@ -22,32 +24,47 @@ export function AvatarVideo() {
     setFaceFileId,
   } = useAvatarStore();
   
-  // Canvas ref（由 useLipsyncPlayer 绑定）
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // 视频元素 refs
+  const idleVideoRef = useRef<HTMLVideoElement>(null);
+  const thinkVideoRef = useRef<HTMLVideoElement>(null);
+  const danceVideoRef = useRef<HTMLVideoElement>(null);
   
   // 获取当前形象数据
   const currentAvatar = AVATAR_LIST.find((a) => a.id === currentAvatarId) || AVATAR_LIST[0];
   
-  // 获取当前状态对应的视频路径
-  const currentVideoSrc = currentAvatar.videos[action];
+  // 当 action='talk' 但 lipsync 未在播放时，使用 think 视频作为过渡（避免句子间隙闪烁）
+  const effectiveAction = (action === 'talk' && lipsyncEnabled && lipsyncMode !== 'playing') 
+    ? 'think' 
+    : action;
 
   // 是否显示 Canvas（talk 状态且 lipsync 启用且正在播放）
   const showCanvas = action === 'talk' && lipsyncEnabled && lipsyncMode === 'playing';
-  
-  // 是否循环播放 (跳舞状态不循环，think 状态循环)
-  const isLoop = action !== "dance";
 
-  // 处理视频结束事件
-  const handleEnded = useCallback(() => {
-    if (action === "dance") {
-      setAction("idle");
-    }
-  }, [action, setAction]);
+  // 处理 dance 视频结束事件
+  const handleDanceEnded = useCallback(() => {
+    setAction("idle");
+  }, [setAction]);
 
   // 处理视频加载错误
-  const handleError = useCallback(() => {
-    console.error(`视频加载失败: ${currentVideoSrc}`);
-  }, [currentVideoSrc]);
+  const handleError = useCallback((videoType: string) => {
+    console.error(`视频加载失败: ${videoType}`);
+  }, []);
+
+  // 当 effectiveAction 变化时，确保对应视频从头播放
+  useEffect(() => {
+    const videoRef = 
+      effectiveAction === 'idle' ? idleVideoRef :
+      effectiveAction === 'think' ? thinkVideoRef :
+      effectiveAction === 'dance' ? danceVideoRef : null;
+    
+    if (videoRef?.current && !showCanvas) {
+      // 重置到开头并播放
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {
+        // 自动播放可能被阻止，忽略错误
+      });
+    }
+  }, [effectiveAction, showCanvas]);
 
   // 应用启动或 avatar 切换时，自动上传人脸文件（视频）用于对口型
   useEffect(() => {
@@ -64,24 +81,50 @@ export function AvatarVideo() {
     }
   }, [currentAvatarId, lipsyncEnabled, faceFileId, currentAvatar.faceImage, setFaceFileId]);
 
+  // 判断某个视频是否应该显示
+  const isVideoVisible = (videoAction: string) => {
+    return effectiveAction === videoAction && !showCanvas;
+  };
+
   return (
     <div className={styles.container}>
-      {/* Video 元素：用于 idle/think/dance 状态，或 lipsync 降级 */}
+      {/* idle 视频 - 预加载，循环播放 */}
       <video
-        key={`${currentAvatarId}-${action}`}
-        src={currentVideoSrc}
-        className={`${styles.video} ${showCanvas ? styles.hidden : ''}`}
+        ref={idleVideoRef}
+        src={currentAvatar.videos.idle}
+        className={`${styles.video} ${isVideoVisible('idle') ? '' : styles.hidden}`}
+        autoPlay
+        loop
+        playsInline
+        muted
+        onError={() => handleError('idle')}
+      />
+      
+      {/* think 视频 - 预加载，循环播放 */}
+      <video
+        ref={thinkVideoRef}
+        src={currentAvatar.videos.think}
+        className={`${styles.video} ${isVideoVisible('think') ? '' : styles.hidden}`}
+        autoPlay
+        loop
+        playsInline
+        muted
+        onError={() => handleError('think')}
+      />
+      
+      {/* dance 视频 - 预加载，不循环，播放完切回 idle */}
+      <video
+        ref={danceVideoRef}
+        src={currentAvatar.videos.dance}
+        className={`${styles.video} ${isVideoVisible('dance') ? '' : styles.hidden}`}
         autoPlay
         playsInline
-        muted={action !== "dance"}
-        loop={isLoop}
-        onEnded={handleEnded}
-        onError={handleError}
+        onEnded={handleDanceEnded}
+        onError={() => handleError('dance')}
       />
       
       {/* Canvas 元素：用于 lip-sync 实时渲染 */}
       <canvas
-        ref={canvasRef}
         id="lipsync-canvas"
         className={`${styles.canvas} ${showCanvas ? '' : styles.hidden}`}
       />

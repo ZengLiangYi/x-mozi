@@ -33,6 +33,11 @@ export function useVoiceInteraction() {
   // Lip-sync 播放器（支持并行预生成 + 顺序播放）
   const { prepare: prepareLipsync, playPrepared, stop: stopLipsync, isPlaying: isLipsyncPlaying } = useLipsyncPlayer();
   
+  // Lip-sync 并发控制
+  const MAX_CONCURRENT_PREPARE = 2;  // 最大同时进行的预生成任务数
+  const activePrepareCountRef = useRef(0);  // 当前正在进行的预生成任务数
+  const pendingAudioQueueRef = useRef<Uint8Array[]>([]);  // 等待预生成的音频队列
+  
   // Lip-sync 预生成队列（存储 Promise，可以并行预生成）
   const lipsyncPrepareQueueRef = useRef<Array<Promise<PreparedLipsyncData>>>([]);
   // 播放循环是否在运行
@@ -81,6 +86,8 @@ export function useVoiceInteraction() {
       
       // 清理 Lip-sync
       lipsyncPrepareQueueRef.current = [];
+      pendingAudioQueueRef.current = [];
+      activePrepareCountRef.current = 0;
       isLipsyncLoopRunningRef.current = false;
       stopLipsync();
     };
@@ -190,14 +197,14 @@ export function useVoiceInteraction() {
           break;
         }
         
-        // 播放
+        // 播放（playPrepared 会在首帧渲染后自动设置 lipsyncMode='playing'）
         console.log('▶️ 播放对口型');
-        setPhase('speaking');
-        setAction('talk');
         
         await playPrepared(preparedData, {
           onPlayStart: () => {
-            setLipsyncMode('playing');
+            // 在 Canvas 显示后（首帧已渲染）再切换状态，避免闪烁
+            setPhase('speaking');
+            setAction('talk');
           },
           onPlayEnd: () => {
             console.log('✅ 一句播放完成');
@@ -208,7 +215,11 @@ export function useVoiceInteraction() {
         });
         
       } catch (error) {
-        if (wasInterruptedRef.current) {
+        // AbortError 或已打断的情况，静默退出
+        if (wasInterruptedRef.current || 
+            (error instanceof Error && error.name === 'AbortError') ||
+            (error instanceof DOMException && error.name === 'AbortError')) {
+          console.log('Lip-sync 预生成被取消');
           break;
         }
         console.error('Lip-sync 处理错误:', error);
@@ -232,27 +243,58 @@ export function useVoiceInteraction() {
     console.log('🎬 Lip-sync 播放循环结束');
   }, [playPrepared, setAction, setPhase, setLipsyncMode]);
 
+  /**
+   * 启动一个预生成任务（内部函数）
+   */
+  const startPrepareTask = useCallback((audioBytes: Uint8Array) => {
+    if (!faceFileId) return;
+    
+    activePrepareCountRef.current++;
+    console.log(`📤 开始预生成 lip-sync 帧 (并发: ${activePrepareCountRef.current}/${MAX_CONCURRENT_PREPARE})`);
+    
+    const preparePromise = prepareLipsync(
+      faceFileId, 
+      audioBytes, 
+      abortControllerRef.current?.signal
+    ).finally(() => {
+      // 任务完成（成功或失败），减少计数
+      activePrepareCountRef.current--;
+      
+      // 检查等待队列，启动下一个任务
+      if (pendingAudioQueueRef.current.length > 0 && activePrepareCountRef.current < MAX_CONCURRENT_PREPARE) {
+        const nextAudio = pendingAudioQueueRef.current.shift()!;
+        startPrepareTask(nextAudio);
+      }
+    });
+    
+    // 加入预生成队列
+    lipsyncPrepareQueueRef.current.push(preparePromise);
+    
+    // 启动播放循环（如果尚未运行）
+    runLipsyncPlayLoop().catch(err => {
+      if (err?.name !== 'AbortError') {
+        console.error('Lip-sync 播放循环错误:', err);
+      }
+    });
+  }, [faceFileId, prepareLipsync, runLipsyncPlayLoop]);
+
   // 处理音频的回调（判断是否启用 lip-sync）
   const handleAudio = useCallback((audioBytes: Uint8Array) => {
     if (lipsyncEnabled && faceFileId) {
-      // 启用 lip-sync：立即开始预生成（并行）
-      console.log('📤 开始预生成 lip-sync 帧...');
-      const preparePromise = prepareLipsync(
-        faceFileId, 
-        audioBytes, 
-        abortControllerRef.current?.signal
-      );
-      
-      // 加入预生成队列
-      lipsyncPrepareQueueRef.current.push(preparePromise);
-      
-      // 启动播放循环（如果尚未运行）
-      runLipsyncPlayLoop();
+      // 检查是否达到最大并发数
+      if (activePrepareCountRef.current < MAX_CONCURRENT_PREPARE) {
+        // 未达到上限，立即启动预生成
+        startPrepareTask(audioBytes);
+      } else {
+        // 达到上限，加入等待队列
+        console.log(`⏸️ 预生成任务已满 (${MAX_CONCURRENT_PREPARE})，加入等待队列`);
+        pendingAudioQueueRef.current.push(audioBytes);
+      }
     } else {
       // 降级：使用原有音频播放
       enqueueAudio(audioBytes);
     }
-  }, [lipsyncEnabled, faceFileId, enqueueAudio, prepareLipsync, runLipsyncPlayLoop]);
+  }, [lipsyncEnabled, faceFileId, enqueueAudio, startPrepareTask]);
 
   // TTS 执行器
   const { 
@@ -286,6 +328,8 @@ export function useVoiceInteraction() {
     
     // 3. 清空 Lip-sync 预生成队列并停止当前播放
     lipsyncPrepareQueueRef.current = [];
+    pendingAudioQueueRef.current = [];
+    activePrepareCountRef.current = 0;
     isLipsyncLoopRunningRef.current = false;
     stopLipsync();
     
@@ -328,6 +372,8 @@ export function useVoiceInteraction() {
     // 重置 TTS 队列和 Lip-sync 队列
     resetTTSQueue();
     lipsyncPrepareQueueRef.current = [];
+    pendingAudioQueueRef.current = [];
+    activePrepareCountRef.current = 0;
     isLipsyncLoopRunningRef.current = false;
     
     setIsProcessing(true);

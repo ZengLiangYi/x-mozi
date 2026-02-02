@@ -13,6 +13,7 @@ import { useAvatarStore } from '@/store/avatarStore';
 /** 预生成的数据 */
 export interface PreparedLipsyncData {
   frames: string[];           // base64 帧数据
+  bitmaps?: ImageBitmap[];    // 预解码的帧（可选，播放时生成）
   audioBytes: Uint8Array;     // 原始音频
   totalFrames: number;
   fps: number;
@@ -67,24 +68,51 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
   // 渲染相关
   const animationFrameIdRef = useRef<number | null>(null);
   const currentDataRef = useRef<PreparedLipsyncData | null>(null);
+  const bitmapsRef = useRef<ImageBitmap[]>([]);
   
   // 播放完成回调
   const onPlayEndRef = useRef<(() => void) | null>(null);
   
   /**
-   * 绘制帧到 Canvas
+   * 绘制 ImageBitmap 到 Canvas（同步，无闪烁）
    */
-  const drawFrame = useCallback((base64Data: string) => {
+  const drawBitmap = useCallback((bitmap: ImageBitmap) => {
     const ctx = ctxRef.current;
     const canvas = getLipsyncCanvas();
     if (!ctx || !canvas) return;
     
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
-    img.src = 'data:image/jpeg;base64,' + base64Data;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   }, []);
+  
+  /**
+   * 将 base64 帧数据转换为 ImageBitmap
+   */
+  const decodeFrameToBitmap = useCallback(async (base64Data: string): Promise<ImageBitmap> => {
+    const response = await fetch('data:image/jpeg;base64,' + base64Data);
+    const blob = await response.blob();
+    return createImageBitmap(blob);
+  }, []);
+  
+  /**
+   * 预解码所有帧为 ImageBitmap
+   */
+  const decodeAllFrames = useCallback(async (frames: string[]): Promise<ImageBitmap[]> => {
+    console.log(`预解码 ${frames.length} 帧...`);
+    const bitmaps: ImageBitmap[] = [];
+    
+    // 分批解码，避免内存峰值过高
+    const batchSize = 10;
+    for (let i = 0; i < frames.length; i += batchSize) {
+      const batch = frames.slice(i, i + batchSize);
+      const batchBitmaps = await Promise.all(
+        batch.map(frame => frame ? decodeFrameToBitmap(frame) : Promise.resolve(null as unknown as ImageBitmap))
+      );
+      bitmaps.push(...batchBitmaps);
+    }
+    
+    console.log(`帧解码完成`);
+    return bitmaps;
+  }, [decodeFrameToBitmap]);
   
   /**
    * 渲染帧循环
@@ -94,16 +122,17 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
     
     const audioContext = audioContextRef.current;
     const data = currentDataRef.current;
+    const bitmaps = bitmapsRef.current;
     if (!audioContext) return;
     
     // 计算当前应该显示的帧
     const audioElapsed = audioContext.currentTime - audioStartTimeRef.current;
     const targetFrame = Math.floor(audioElapsed * data.fps);
     
-    // 绘制帧
-    if (targetFrame < data.frames.length && data.frames[targetFrame]) {
+    // 绘制帧（使用预解码的 ImageBitmap，同步绘制无闪烁）
+    if (targetFrame < bitmaps.length && bitmaps[targetFrame]) {
       if (currentFrameRef.current !== targetFrame) {
-        drawFrame(data.frames[targetFrame]);
+        drawBitmap(bitmaps[targetFrame]);
         currentFrameRef.current = targetFrame;
       }
     }
@@ -118,7 +147,7 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
       onPlayEndRef.current?.();
       onPlayEndRef.current = null;
     }
-  }, [drawFrame, setLipsyncMode]);
+  }, [drawBitmap, setLipsyncMode]);
   
   /**
    * 停止当前播放
@@ -140,6 +169,14 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
       try { audioContextRef.current.close(); } catch (e) { /* ignore */ }
       audioContextRef.current = null;
     }
+    
+    // 清理 ImageBitmap 资源
+    for (const bitmap of bitmapsRef.current) {
+      if (bitmap) {
+        bitmap.close();
+      }
+    }
+    bitmapsRef.current = [];
     
     // 清理状态
     audioBufferRef.current = null;
@@ -165,7 +202,8 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
     const audioFileId = await uploadAudio(audioBytes);
     
     if (signal?.aborted) {
-      throw new Error('已取消');
+      const abortError = new DOMException('已取消', 'AbortError');
+      throw abortError;
     }
     
     // 准备结果
@@ -184,10 +222,10 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
         faceFileId,
         audioFileId,
         {
-          batchSize: 8,
+          batchSize: 16,
           outputFps: 25,
           jpegQuality: 95,
-          resizeFactor: 1,
+          resizeFactor: 0.5,
           signal,
         },
         {
@@ -245,6 +283,15 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
           ctxRef.current = canvas.getContext('2d');
         }
         
+        // 预解码所有帧为 ImageBitmap（在后台线程进行，不阻塞主线程）
+        bitmapsRef.current = await decodeAllFrames(data.frames);
+        
+        // 预渲染首帧到 Canvas（在切换显示之前）
+        if (bitmapsRef.current.length > 0 && bitmapsRef.current[0]) {
+          drawBitmap(bitmapsRef.current[0]);
+          console.log('首帧已预渲染');
+        }
+        
         // 创建 AudioContext 并解码音频
         audioContextRef.current = new (window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
         
@@ -266,6 +313,7 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
         audioStartTimeRef.current = audioContextRef.current.currentTime;
         
         console.log('开始播放对口型');
+        // 此时 Canvas 上已经有首帧内容，切换显示不会闪烁
         setLipsyncMode('playing');
         callbacks.onPlayStart?.();
         
@@ -279,7 +327,7 @@ export function useLipsyncPlayer(): LipsyncPlayerResult {
         reject(error);
       }
     });
-  }, [stop, setLipsyncMode, renderFrame]);
+  }, [stop, setLipsyncMode, renderFrame, decodeAllFrames, drawBitmap]);
   
   /**
    * 检查是否正在播放
